@@ -28,8 +28,11 @@ let pollTimer = null;
 const { overlay, mpv, menu, http, console: log } = iina;
 
 // ── Overlay Setup ────────────────────────────────────────────
-overlay.loadFile("overlay.html");
-overlay.show();
+// Must wait for the window to be ready before calling overlay APIs
+iina.event.on("iina.window-loaded", () => {
+  overlay.loadFile("overlay.html");
+  overlay.show();
+});
 
 // ── Translation Cache ────────────────────────────────────────
 const translationCache = new Map();
