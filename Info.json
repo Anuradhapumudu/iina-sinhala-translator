@@ -1,0 +1,19 @@
+{
+  "name": "Sinhala Subtitle Translator",
+  "identifier": "com.plugin.sinhala-translate",
+  "description": "Real-time subtitle translation into spoken Sinhala using Gemini AI",
+  "version": "1.0.0",
+  "author": {
+    "name": "Pumudu",
+    "url": "https://github.com/Anuradhapumudu"
+  },
+  "entry": "main.js",
+  "permissions": [
+    "network-request",
+    "video-overlay",
+    "show-osd"
+  ],
+  "allowedDomains": [
+    "generativelanguage.googleapis.com"
+  ]
+}

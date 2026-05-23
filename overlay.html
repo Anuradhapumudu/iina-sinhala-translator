@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sinhala Subtitle Overlay</title>
+  <style>
+    /* ── Reset & Full-Screen Container ──────────────────────── */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      font-family:
+        "Noto Sans Sinhala",
+        "Iskoola Pota",
+        "Malithi Web",
+        -apple-system,
+        BlinkMacSystemFont,
+        sans-serif;
+    }
+
+    /* ── Subtitle Anchor ───────────────────────────────────── */
+    #subtitle-anchor {
+      position: fixed;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ── Subtitle Pill ─────────────────────────────────────── */
+    #subtitle-box {
+      display: inline-block;
+      max-width: 85vw;
+      padding: 10px 24px;
+      border-radius: 10px;
+
+      /* Dark glass background */
+      background: rgba(0, 0, 0, 0.72);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow:
+        0 4px 24px rgba(0, 0, 0, 0.45),
+        0 0 0 0.5px rgba(255, 255, 255, 0.06) inset;
+
+      /* Text */
+      color: #ffffff;
+      font-size: 24px;
+      font-weight: 500;
+      line-height: 1.55;
+      letter-spacing: 0.015em;
+      text-align: center;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+
+      /* Animation */
+      opacity: 0;
+      transform: translateY(8px);
+      transition:
+        opacity 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+        transform 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    #subtitle-box.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #subtitle-box.fallback {
+      color: rgba(255, 255, 255, 0.50);
+      font-style: italic;
+    }
+
+    /* ── Loading Indicator ─────────────────────────────────── */
+    #loading-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 16px;
+      border-radius: 20px;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+
+      opacity: 0;
+      transform: translateY(6px);
+      transition:
+        opacity 0.22s ease,
+        transform 0.22s ease;
+    }
+
+    #loading-indicator.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #loading-indicator .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.7);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    #loading-indicator .dot:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    #loading-indicator .dot:nth-child(3) {
+      animation-delay: 0.30s;
+    }
+
+    #loading-label {
+      color: rgba(255, 255, 255, 0.55);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      margin-left: 4px;
+    }
+
+    @keyframes pulse {
+      0%, 80%, 100% {
+        opacity: 0.25;
+        transform: scale(0.8);
+      }
+      40% {
+        opacity: 1;
+        transform: scale(1.2);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="subtitle-anchor">
+    <!-- Loading dots -->
+    <div id="loading-indicator">
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span id="loading-label">translating</span>
+    </div>
+
+    <!-- Translated subtitle pill -->
+    <div id="subtitle-box"></div>
+  </div>
+
+  <script>
+    // ── DOM Refs ─────────────────────────────────────────────
+    const subtitleBox = document.getElementById("subtitle-box");
+    const loadingIndicator = document.getElementById("loading-indicator");
+
+    let hideTimeout = null;
+
+    // ── Helpers ──────────────────────────────────────────────
+    function showSubtitle(text, isFallback) {
+      // Clear any pending hide
+      if (hideTimeout) {
+        clearTimeout(hideTimeout);
+        hideTimeout = null;
+      }
+
+      // Hide the loading indicator
+      loadingIndicator.classList.remove("visible");
+
+      // Set text and style
+      subtitleBox.textContent = text;
+
+      if (isFallback) {
+        subtitleBox.classList.add("fallback");
+      } else {
+        subtitleBox.classList.remove("fallback");
+      }
+
+      // Fade in
+      subtitleBox.classList.add("visible");
+    }
+
+    function hideSubtitle() {
+      // Fade out the subtitle
+      subtitleBox.classList.remove("visible");
+
+      // Also hide loading
+      loadingIndicator.classList.remove("visible");
+
+      // Clear text after fade-out completes
+      hideTimeout = setTimeout(() => {
+        subtitleBox.textContent = "";
+        subtitleBox.classList.remove("fallback");
+      }, 300);
+    }
+
+    function showLoading() {
+      // Show the loading dots
+      loadingIndicator.classList.add("visible");
+
+      // Keep subtitle hidden while loading
+      subtitleBox.classList.remove("visible");
+    }
+
+    // ── Message Handlers from main.js ────────────────────────
+    iina.onMessage("show-subtitle", (data) => {
+      showSubtitle(data.text, false);
+    });
+
+    iina.onMessage("show-fallback", (data) => {
+      showSubtitle(data.text, true);
+    });
+
+    iina.onMessage("loading", () => {
+      showLoading();
+    });
+
+    iina.onMessage("hide", () => {
+      hideSubtitle();
+    });
+  </script>
+</body>
+</html>
