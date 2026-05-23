@@ -71,9 +71,7 @@ async function translateWithGemini(text) {
   };
 
   try {
-    const response = await http.request({
-      method: "POST",
-      url: GEMINI_ENDPOINT,
+    const response = await http.post(GEMINI_ENDPOINT, {
       headers: {
         "Content-Type": "application/json",
       },
