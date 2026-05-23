@@ -4,11 +4,8 @@
 // ============================================================
 
 // ── Configuration ────────────────────────────────────────────
-// Replace the value below with your own Gemini API key.
-// Get one free at: https://aistudio.google.com/app/apikey
-const GEMINI_API_KEY = iina.preferences.get("geminiApiKey") || "";
-
-const GEMINI_MODEL = "gemini-3-flash";
+const GEMINI_API_KEY = "AIzaSyAJDcIOrAhO8weTljfHfhVt9Lfyy3op6r8";
+const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_ENDPOINT =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
@@ -35,13 +32,11 @@ overlay.loadFile("overlay.html");
 overlay.show();
 
 // ── Translation Cache ────────────────────────────────────────
-// Simple LRU-ish cache to avoid re-translating repeated lines
 const translationCache = new Map();
 const CACHE_MAX_SIZE = 100;
 
 function cacheSet(key, value) {
   if (translationCache.size >= CACHE_MAX_SIZE) {
-    // Delete the oldest entry
     const firstKey = translationCache.keys().next().value;
     translationCache.delete(firstKey);
   }
@@ -75,10 +70,9 @@ async function translateWithGemini(text) {
       headers: {
         "Content-Type": "application/json",
       },
-      data: JSON.stringify(requestBody),
+      data: requestBody,
     });
 
-    // Parse the response
     const result = response.data;
 
     if (
@@ -92,19 +86,17 @@ async function translateWithGemini(text) {
       return result.candidates[0].content.parts[0].text.trim();
     }
 
-    // If response structure is unexpected, return null
-    log.log("[SinhalaTranslator] Unexpected API response structure");
+    log.log("[SinhalaTranslator] Unexpected API response: " + JSON.stringify(result));
     return null;
   } catch (error) {
-    log.log("[SinhalaTranslator] API error: " + String(error));
+    log.log("[SinhalaTranslator] API error: " + JSON.stringify(error));
     return null;
   }
 }
 
-// ── Subtitle Processing ─────────────────────────────────────
+// ── Subtitle Processing ──────────────────────────────────────
 async function processSubtitle(subtitleText) {
   if (!subtitleText || subtitleText.trim() === "") {
-    // No subtitle visible — hide the overlay text
     lastSubtitleText = "";
     overlay.postMessage("hide", {});
     return;
@@ -112,35 +104,29 @@ async function processSubtitle(subtitleText) {
 
   const cleaned = subtitleText.trim();
 
-  // Same subtitle as before — skip
   if (cleaned === lastSubtitleText) {
     return;
   }
 
   lastSubtitleText = cleaned;
 
-  // If translation is off, do nothing
   if (!translationEnabled) {
     overlay.postMessage("hide", {});
     return;
   }
 
-  // Check the cache first
   const cached = cacheGet(cleaned);
   if (cached) {
     overlay.postMessage("show-subtitle", { text: cached });
     return;
   }
 
-  // Show loading indicator
   overlay.postMessage("loading", {});
   isTranslating = true;
 
-  // Call Gemini
   const translated = await translateWithGemini(cleaned);
   isTranslating = false;
 
-  // The subtitle may have changed while we were translating
   if (cleaned !== lastSubtitleText) {
     return;
   }
@@ -149,7 +135,6 @@ async function processSubtitle(subtitleText) {
     cacheSet(cleaned, translated);
     overlay.postMessage("show-subtitle", { text: translated });
   } else {
-    // Translation failed — show original text dimmed as fallback
     overlay.postMessage("show-fallback", { text: cleaned });
   }
 }
@@ -189,7 +174,7 @@ const toggleItem = menu.item(
 
     if (translationEnabled) {
       iina.core.osd("සිංහල පරිවර්තනය සක්‍රියයි  ✓");
-      lastSubtitleText = ""; // Force re-translate the current subtitle
+      lastSubtitleText = "";
       startPolling();
     } else {
       iina.core.osd("සිංහල පරිවර්තනය අක්‍රියයි  ✗");
