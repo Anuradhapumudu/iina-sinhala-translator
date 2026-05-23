@@ -1,13 +1,16 @@
 // ============================================================
-//  Sinhala Subtitle Translator — IINA Plugin (main.js)
+//  Sinhala Subtitle Translator -- IINA Plugin (main.js)
 //  Translates subtitles in real-time to spoken Sinhala via Gemini
 // ============================================================
 
-// ── Configuration ────────────────────────────────────────────
+// -- Configuration --------------------------------------------
 const GEMINI_API_KEY = "AIzaSyAJDcIOrAhO8weTljfHfhVt9Lfyy3op6r8";
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-2.0-flash";
 const GEMINI_ENDPOINT =
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  "https://generativelanguage.googleapis.com/v1beta/models/" +
+  GEMINI_MODEL +
+  ":generateContent?key=" +
+  GEMINI_API_KEY;
 
 const POLL_INTERVAL_MS = 300;
 
@@ -18,23 +21,23 @@ const TRANSLATION_PROMPT =
   "Return ONLY the translated Sinhala text, nothing else. " +
   "Do not explain. Subtitle: ";
 
-// ── State ────────────────────────────────────────────────────
+// -- State ----------------------------------------------------
 let translationEnabled = true;
 let lastSubtitleText = "";
 let isTranslating = false;
 let pollTimer = null;
 
-// ── Modules ──────────────────────────────────────────────────
+// -- Modules --------------------------------------------------
 const { overlay, mpv, menu, http, console: log } = iina;
 
-// ── Overlay Setup ────────────────────────────────────────────
+// -- Overlay Setup --------------------------------------------
 // Must wait for the window to be ready before calling overlay APIs
-iina.event.on("iina.window-loaded", () => {
+iina.event.on("iina.window-loaded", function () {
   overlay.loadFile("overlay.html");
   overlay.show();
 });
 
-// ── Translation Cache ────────────────────────────────────────
+// -- Translation Cache ----------------------------------------
 const translationCache = new Map();
 const CACHE_MAX_SIZE = 100;
 
@@ -50,7 +53,7 @@ function cacheGet(key) {
   return translationCache.get(key);
 }
 
-// ── Gemini API Call ──────────────────────────────────────────
+// -- Gemini API Call ------------------------------------------
 async function translateWithGemini(text) {
   const requestBody = {
     contents: [
@@ -69,43 +72,74 @@ async function translateWithGemini(text) {
   };
 
   try {
+    log.log("[SinhalaTranslator] Calling Gemini for: " + text);
+
     const response = await http.post(GEMINI_ENDPOINT, {
       headers: {
         "Content-Type": "application/json",
       },
-      data: requestBody,
+      // Manually stringify: IINA JavaScriptCore does not auto-serialize objects
+      data: JSON.stringify(requestBody),
     });
 
-    const result = response.data;
+    log.log("[SinhalaTranslator] HTTP status: " + response.statusCode);
+
+    // IINA may return raw JSON text in response.data or response.text
+    // Try both and parse manually
+    let result = null;
+
+    if (response.data && typeof response.data === "object") {
+      result = response.data;
+    } else {
+      var raw = (typeof response.data === "string" && response.data)
+        || (typeof response.text === "string" && response.text)
+        || "";
+      if (raw) {
+        try {
+          result = JSON.parse(raw);
+        } catch (e) {
+          log.log("[SinhalaTranslator] JSON parse error. Raw: " + raw.substring(0, 200));
+          return null;
+        }
+      }
+    }
+
+    if (!result) {
+      log.log("[SinhalaTranslator] Empty response");
+      return null;
+    }
 
     if (
-      result &&
       result.candidates &&
       result.candidates.length > 0 &&
       result.candidates[0].content &&
       result.candidates[0].content.parts &&
       result.candidates[0].content.parts.length > 0
     ) {
-      return result.candidates[0].content.parts[0].text.trim();
+      var translated = result.candidates[0].content.parts[0].text.trim();
+      log.log("[SinhalaTranslator] => " + translated);
+      return translated;
     }
 
-    log.log("[SinhalaTranslator] Unexpected API response: " + JSON.stringify(result));
+    log.log("[SinhalaTranslator] Bad response shape: " + JSON.stringify(result).substring(0, 200));
     return null;
   } catch (error) {
-    log.log("[SinhalaTranslator] API error: " + JSON.stringify(error));
+    log.log("[SinhalaTranslator] Request failed: " + JSON.stringify(error));
     return null;
   }
 }
 
-// ── Subtitle Processing ──────────────────────────────────────
+// -- Subtitle Processing --------------------------------------
 async function processSubtitle(subtitleText) {
   if (!subtitleText || subtitleText.trim() === "") {
-    lastSubtitleText = "";
-    overlay.postMessage("hide", {});
+    if (lastSubtitleText !== "") {
+      lastSubtitleText = "";
+      overlay.postMessage("hide", {});
+    }
     return;
   }
 
-  const cleaned = subtitleText.trim();
+  var cleaned = subtitleText.trim();
 
   if (cleaned === lastSubtitleText) {
     return;
@@ -118,7 +152,7 @@ async function processSubtitle(subtitleText) {
     return;
   }
 
-  const cached = cacheGet(cleaned);
+  var cached = cacheGet(cleaned);
   if (cached) {
     overlay.postMessage("show-subtitle", { text: cached });
     return;
@@ -127,7 +161,7 @@ async function processSubtitle(subtitleText) {
   overlay.postMessage("loading", {});
   isTranslating = true;
 
-  const translated = await translateWithGemini(cleaned);
+  var translated = await translateWithGemini(cleaned);
   isTranslating = false;
 
   if (cleaned !== lastSubtitleText) {
@@ -142,13 +176,15 @@ async function processSubtitle(subtitleText) {
   }
 }
 
-// ── Polling Loop ─────────────────────────────────────────────
+// -- Polling Loop ---------------------------------------------
 function startPolling() {
   if (pollTimer) return;
-  pollTimer = setInterval(() => {
+  pollTimer = setInterval(function () {
     try {
-      const subText = mpv.getString("sub-text");
-      processSubtitle(subText || "");
+      var subText = mpv.getString("sub-text");
+      processSubtitle(subText || "").catch(function (e) {
+        log.log("[SinhalaTranslator] processSubtitle threw: " + e);
+      });
     } catch (e) {
       // sub-text may not be available if no subtitle track is loaded
     }
@@ -162,25 +198,25 @@ function stopPolling() {
   }
 }
 
-// ── Menu Toggle ──────────────────────────────────────────────
+// -- Menu Toggle ----------------------------------------------
 function updateMenuTitle(item) {
   item.title = translationEnabled
-    ? "✓ Sinhala Translation (ON)"
-    : "  Sinhala Translation (OFF)";
+    ? "Sinhala Translation (ON)"
+    : "Sinhala Translation (OFF)";
 }
 
-const toggleItem = menu.item(
-  "✓ Sinhala Translation (ON)",
-  () => {
+var toggleItem = menu.item(
+  "Sinhala Translation (ON)",
+  function () {
     translationEnabled = !translationEnabled;
     updateMenuTitle(toggleItem);
 
     if (translationEnabled) {
-      iina.core.osd("සිංහල පරිවර්තනය සක්‍රියයි  ✓");
+      iina.core.osd("Sinhala translation ON");
       lastSubtitleText = "";
       startPolling();
     } else {
-      iina.core.osd("සිංහල පරිවර්තනය අක්‍රියයි  ✗");
+      iina.core.osd("Sinhala translation OFF");
       overlay.postMessage("hide", {});
       stopPolling();
     }
@@ -192,6 +228,6 @@ const toggleItem = menu.item(
 
 menu.addItem(toggleItem);
 
-// ── Initialise ───────────────────────────────────────────────
-log.log("[SinhalaTranslator] Plugin loaded — polling for subtitles...");
+// -- Initialise -----------------------------------------------
+log.log("[SinhalaTranslator] Plugin loaded.");
 startPolling();
